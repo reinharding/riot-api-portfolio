@@ -1,0 +1,3 @@
+# Data freshness measured relative to last successful watermark advance, not wall-clock time
+
+ADR 0002 already commits this pipeline to manual, irregular triggering rather than a scheduled cron. A standard wall-clock freshness check ("data must be no older than N hours") would alarm on every gap between manual runs, regardless of whether anything is actually broken — training us to ignore it. Instead, freshness is defined relative to the last successful `ingestion_watermark` advance (e.g. flag only if no successful ingestion has occurred in the last N days), with "days since last run" tracked separately as a non-alerting metric so the pattern stays visible without becoming noise.

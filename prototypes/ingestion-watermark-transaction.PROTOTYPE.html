@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light">
+<title>PROTOTYPE — Ingestion / Watermark / Transaction model</title>
+<style>
+:root {
+  color-scheme: light;
+  --ink: #1a1a1a;
+  --paper: #ffffff;
+  --rule: #d8d3c4;
+  --accent: #8a3b2f;
+  --muted: #6b6558;
+  --good: #2f6b3f;
+  --bad: #a33b2f;
+  --panel: #fbfaf7;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Segoe UI", -apple-system, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  max-width: 980px;
+  margin: 2rem auto;
+  padding: 0 1.5rem 4rem;
+}
+h1 { font-size: 1.5rem; margin-bottom: 0.3rem; }
+h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+.intro {
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  background: var(--panel);
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+.intro .label { font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; color: var(--accent); display: block; margin-bottom: 0.3rem; }
+.state-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.panel {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 0.9rem 1rem;
+}
+.panel h2 { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--rule); padding-bottom: 0.4rem; }
+.match-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 0.15rem;
+}
+.match-row.new { background: #eef5ec; }
+.match-row.watermarked { color: var(--muted); }
+.watermark-line {
+  border-top: 2px dashed var(--accent);
+  margin: 0.4rem 0;
+  padding-top: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.empty { color: var(--muted); font-size: 0.85rem; font-style: italic; }
+.status-line {
+  font-size: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 4px;
+  margin-top: 0.5rem;
+}
+.status-line.success { background: #eef5ec; color: var(--good); }
+.status-line.rolled_back { background: #fbeceb; color: var(--bad); }
+.status-line.noop { background: #eee; color: var(--muted); }
+.armed { color: var(--bad); font-weight: 600; }
+.log { max-height: 160px; overflow-y: auto; font-size: 0.78rem; }
+.log-entry { padding: 0.3rem 0; border-bottom: 1px dashed var(--rule); }
+.log-entry:last-child { border-bottom: none; }
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+button {
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: white;
+  color: var(--accent);
+  cursor: pointer;
+}
+button:hover { background: var(--accent); color: white; }
+button.secondary { border-color: var(--muted); color: var(--muted); }
+button.secondary:hover { background: var(--muted); color: white; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:disabled:hover { background: white; color: var(--accent); }
+.tabs { display: flex; gap: 0.4rem; margin-bottom: 0; border-bottom: 1px solid var(--rule); }
+.tab-btn {
+  border: 1px solid var(--rule);
+  border-bottom: none;
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: 6px 6px 0 0;
+  padding: 0.5rem 1rem;
+}
+.tab-btn.active { background: white; color: var(--ink); font-weight: 600; border-color: var(--accent); }
+.tab-content {
+  border: 1px solid var(--rule);
+  border-top: none;
+  padding: 1rem 1.2rem;
+  border-radius: 0 0 6px 6px;
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.scenario-desc { font-size: 0.9rem; margin-bottom: 0.8rem; }
+.step-list { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.step-list button.step-done { background: var(--good); border-color: var(--good); color: white; }
+.step-list .arrow { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<h1>Ingestion / Watermark / Transaction model</h1>
+<div class="intro">
+<span class="label">Question this prototype answers</span>
+Does the idempotent-upsert-plus-watermark design actually behave correctly across the cases that matter: a normal catch-up run, re-running when there's nothing new (must not duplicate anything), and a crash partway through a batch of several new games (must roll back completely — no half-saved data, no watermark pointing past unsaved rows)? This simulates one player's data flowing from "Riot's servers" into "our Postgres" — everything here is in-memory, nothing is a real API or database.
+</div>
+
+<div class="state-grid">
+  <div class="panel">
+    <h2>Riot API (what exists)</h2>
+    <div id="riot-matches"></div>
+  </div>
+  <div class="panel">
+    <h2>Our Postgres (what we've saved)</h2>
+    <div id="db-matches"></div>
+    <div id="status"></div>
+  </div>
+  <div class="panel">
+    <h2>Run log</h2>
+    <div id="run-log" class="log"></div>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="btn-add-match">Add new match on Riot API</button>
+  <button id="btn-arm-failure" class="secondary">Arm a mid-batch failure on next run</button>
+  <button id="btn-run">Run ingestion</button>
+  <button id="btn-reset" class="secondary">Reset</button>
+</div>
+
+<h2 style="margin-top:2rem;">Guided walkthroughs</h2>
+<div class="tabs" id="tabs"></div>
+<div id="tab-contents"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// PURE MODULE — the part that would lift into the real ingestion code.
+// No DOM, no document, no button handlers below this line until the marker.
+// ---------------------------------------------------------------------------
+
+function createInitialState() {
+  return {
+    riotApiMatches: [],     // [{id, playedAt}] — everything that "exists" for this PUUID
+    dbMatches: [],          // [{id, playedAt}] — only committed rows ever land here
+    watermark: null,        // id of the last successfully processed match, or null
+    armedFailureNextRun: false,
+    runLog: [],             // [{summary, kind: 'success'|'rolled_back'|'noop'}]
+    nextMatchId: 1,
+  };
+}
+
+// (state, action) => state
+function reduce(state, action) {
+  switch (action.type) {
+    case "ADD_NEW_MATCH": {
+      const match = { id: state.nextMatchId, playedAt: state.nextMatchId };
+      return {
+        ...state,
+        riotApiMatches: [...state.riotApiMatches, match],
+        nextMatchId: state.nextMatchId + 1,
+      };
+    }
+
+    case "ARM_FAILURE": {
+      return { ...state, armedFailureNextRun: true };
+    }
+
+    case "RUN_INGESTION": {
+      const newMatches = state.riotApiMatches.filter(
+        (m) => state.watermark === null || m.id > state.watermark
+      );
+
+      if (newMatches.length === 0) {
+        return {
+          ...state,
+          runLog: [
+            { kind: "noop", summary: "Run started — no matches newer than the watermark. Nothing to do." },
+            ...state.runLog,
+          ],
+        };
+      }
+
+      // Simulate a crash partway through the batch. Because everything in
+      // this run is one transaction, ANY failure mid-batch means NOTHING
+      // from this batch is committed and the watermark does not move —
+      // not even the matches that were processed before the crash point.
+      if (state.armedFailureNextRun) {
+        const crashAt = Math.min(2, newMatches.length - 1); // crash on the 3rd match if present
+        return {
+          ...state,
+          armedFailureNextRun: false, // single-shot: the failure has now "happened"
+          runLog: [
+            {
+              kind: "rolled_back",
+              summary: `Run started with ${newMatches.length} new match(es) — crashed while processing match #${state.riotApiMatches[state.watermark === null ? 0 : state.riotApiMatches.findIndex(m=>m.id===state.watermark)+1+crashAt]?.id ?? "?"}. Transaction rolled back: 0 committed, watermark unchanged.`,
+            },
+            ...state.runLog,
+          ],
+        };
+      }
+
+      const newWatermark = newMatches[newMatches.length - 1].id;
+      return {
+        ...state,
+        dbMatches: [...state.dbMatches, ...newMatches],
+        watermark: newWatermark,
+        runLog: [
+          {
+            kind: "success",
+            summary: `Run started with ${newMatches.length} new match(es) — all committed, watermark advanced to match #${newWatermark}.`,
+          },
+          ...state.runLog,
+        ],
+      };
+    }
+
+    case "RESET": {
+      return createInitialState();
+    }
+
+    default:
+      return state;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THROWAWAY PAGE SHELL — everything below wires the pure module above to
+// buttons and rendering. None of this belongs in the real codebase.
+// ---------------------------------------------------------------------------
+
+let state = createInitialState();
+
+function dispatch(action) {
+  state = reduce(state, action);
+  render();
+}
+
+function render() {
+  const riotEl = document.getElementById("riot-matches");
+  const dbEl = document.getElementById("db-matches");
+  const statusEl = document.getElementById("status");
+  const logEl = document.getElementById("run-log");
+  const armBtn = document.getElementById("btn-arm-failure");
+  const runBtn = document.getElementById("btn-run");
+
+  if (state.riotApiMatches.length === 0) {
+    riotEl.innerHTML = `<div class="empty">No games played yet.</div>`;
+  } else {
+    riotEl.innerHTML = state.riotApiMatches
+      .map((m) => {
+        const isNew = state.watermark === null || m.id > state.watermark;
+        return `<div class="match-row ${isNew ? "new" : "watermarked"}">
+          <span>Match #${m.id}</span>
+          <span>${isNew ? "not yet ingested" : "already watermarked"}</span>
+        </div>`;
+      })
+      .join("") +
+      `<div class="watermark-line">watermark: ${state.watermark === null ? "none" : "match #" + state.watermark}</div>`;
+  }
+
+  if (state.dbMatches.length === 0) {
+    dbEl.innerHTML = `<div class="empty">No committed rows yet.</div>`;
+  } else {
+    dbEl.innerHTML = state.dbMatches
+      .map((m) => `<div class="match-row watermarked"><span>Match #${m.id}</span><span>committed</span></div>`)
+      .join("");
+  }
+
+  const last = state.runLog[0];
+  if (!last) {
+    statusEl.innerHTML = "";
+  } else {
+    statusEl.innerHTML = `<div class="status-line ${last.kind}">${last.summary}</div>`;
+  }
+
+  logEl.innerHTML = state.runLog.length
+    ? state.runLog.map((l) => `<div class="log-entry">${l.summary}</div>`).join("")
+    : `<div class="empty">No runs yet.</div>`;
+
+  armBtn.textContent = state.armedFailureNextRun
+    ? "Failure armed for next run (click Run ingestion)"
+    : "Arm a mid-batch failure on next run";
+  armBtn.classList.toggle("armed", state.armedFailureNextRun);
+
+  const hasNew = state.riotApiMatches.some(
+    (m) => state.watermark === null || m.id > state.watermark
+  );
+  runBtn.disabled = state.riotApiMatches.length === 0;
+}
+
+document.getElementById("btn-add-match").addEventListener("click", () => dispatch({ type: "ADD_NEW_MATCH" }));
+document.getElementById("btn-arm-failure").addEventListener("click", () => dispatch({ type: "ARM_FAILURE" }));
+document.getElementById("btn-run").addEventListener("click", () => dispatch({ type: "RUN_INGESTION" }));
+document.getElementById("btn-reset").addEventListener("click", () => dispatch({ type: "RESET" }));
+
+// ---- Guided walkthroughs ---------------------------------------------------
+
+const scenarios = [
+  {
+    title: "Happy path",
+    description:
+      "Two games get played, then the pipeline runs and catches both up in one go. Then it runs again with nothing new — it should do nothing, not re-insert anything.",
+    steps: [
+      { label: "Play a game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Play another game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Run ingestion", action: () => dispatch({ type: "RUN_INGESTION" }) },
+      { label: "Run ingestion again (nothing new)", action: () => dispatch({ type: "RUN_INGESTION" }) },
+    ],
+  },
+  {
+    title: "Mid-batch crash",
+    description:
+      "Three games get played. We arm a simulated crash that hits partway through the batch, then run ingestion. Watch: does anything get half-saved? Does the watermark move? Then we run again without the crash and confirm nothing was lost.",
+    steps: [
+      { label: "Play a game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Play another game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Play a third game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Arm a mid-batch failure", action: () => dispatch({ type: "ARM_FAILURE" }) },
+      { label: "Run ingestion (will roll back)", action: () => dispatch({ type: "RUN_INGESTION" }) },
+      { label: "Run ingestion again (should catch up cleanly)", action: () => dispatch({ type: "RUN_INGESTION" }) },
+    ],
+  },
+  {
+    title: "Trying to break it: force a duplicate",
+    description:
+      "The naive, wrong version of this pipeline would just “insert new matches” every run. Here we play one game and run ingestion twice in a row, back to back, to see whether the second run illegally re-inserts the same match.",
+    steps: [
+      { label: "Play a game", action: () => dispatch({ type: "ADD_NEW_MATCH" }) },
+      { label: "Run ingestion", action: () => dispatch({ type: "RUN_INGESTION" }) },
+      { label: "Run ingestion again immediately", action: () => dispatch({ type: "RUN_INGESTION" }) },
+    ],
+  },
+];
+
+const tabsEl = document.getElementById("tabs");
+const tabContentsEl = document.getElementById("tab-contents");
+let activeTab = 0;
+let stepProgress = scenarios.map(() => 0);
+
+function renderTabs() {
+  tabsEl.innerHTML = scenarios
+    .map((s, i) => `<button class="tab-btn ${i === activeTab ? "active" : ""}" data-tab="${i}">${s.title}</button>`)
+    .join("");
+  tabsEl.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeTab = Number(btn.dataset.tab);
+      renderTabs();
+      renderTabContents();
+    });
+  });
+}
+
+function renderTabContents() {
+  tabContentsEl.innerHTML = scenarios
+    .map((s, i) => {
+      const stepsHtml = s.steps
+        .map((step, stepIdx) => {
+          const done = stepIdx < stepProgress[i];
+          const isNext = stepIdx === stepProgress[i];
+          return `<button class="step-btn ${done ? "step-done" : ""}" data-scenario="${i}" data-step="${stepIdx}" ${!isNext && !done ? "disabled" : ""}>${stepIdx + 1}. ${step.label}</button>${stepIdx < s.steps.length - 1 ? '<span class="arrow">&rarr;</span>' : ""}`;
+        })
+        .join("");
+      return `<div class="tab-content ${i === activeTab ? "active" : ""}">
+        <div class="scenario-desc">${s.description}</div>
+        <div class="step-list">${stepsHtml}</div>
+      </div>`;
+    })
+    .join("");
+
+  tabContentsEl.querySelectorAll(".step-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const sIdx = Number(btn.dataset.scenario);
+      const stepIdx = Number(btn.dataset.step);
+      if (stepIdx === 0) {
+        dispatch({ type: "RESET" });
+        stepProgress = scenarios.map(() => 0);
+      }
+      scenarios[sIdx].steps[stepIdx].action();
+      stepProgress[sIdx] = stepIdx + 1;
+      renderTabContents();
+    });
+  });
+}
+
+renderTabs();
+renderTabContents();
+render();
+</script>
+</body>
+</html>

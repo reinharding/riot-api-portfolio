@@ -1,0 +1,3 @@
+# Personal API key with manual refresh, not a production key
+
+A production key would allow unattended 24/7 scheduled ingestion, but requires an approved, publicly-hosted app with published Terms of Service/Privacy Policy — overhead disproportionate to a portfolio project, and in tension with keeping the player pool closed. We deliberately kept the personal dev key (24h expiry) and designed the pipeline around a daily manual refresh instead of assuming unattended operation. `pipeline_runs.trigger_type` (manual vs. scheduled) makes this an explicit, documented tradeoff rather than a hidden limitation.

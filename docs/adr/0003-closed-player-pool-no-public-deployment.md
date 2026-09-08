@@ -1,0 +1,5 @@
+# Closed player pool, no public-facing deployment
+
+Riot's personal-key policy covers personal sites and small groups, not apps serving arbitrary public users — and a public-facing app would need to expose (or proxy) the key to traffic we don't control. We deliberately scoped this to a small, known pool of players, with no live hosted site; the deliverable is the local pipeline, the repository, and the README. This avoids ToS risk entirely rather than managing it, and keeps the personal key's use unambiguously within its intended purpose.
+
+**Revised 2026-08-21:** the pool starts with one consenting friend's account rather than the author's own. The author doesn't play ranked, so their own match history wouldn't have the ranked-queue volume or context this project needs. The friend gave explicit consent (in writing) to have their match history ingested for this project; in exchange, they are never identified by real name or Riot ID in anything public-facing (README, writeup, charts) — referred to only as "Player A." Raw ingested data may retain their real PUUID locally, since that data never leaves the closed pool this ADR already scopes to.
