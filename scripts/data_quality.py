@@ -8,7 +8,7 @@ pattern stays visible without itself failing the freshness check.
 """
 from datetime import datetime, timezone
 
-from db import get_connection
+from db import session
 
 DEFAULT_FRESHNESS_MAX_DAYS = 3
 
@@ -94,10 +94,8 @@ def run_data_quality_checks(
     now: datetime | None = None,
     freshness_max_days: float = DEFAULT_FRESHNESS_MAX_DAYS,
 ) -> dict:
-    owns_conn = conn is None
-    conn = conn or get_connection()
     now = now or datetime.now(timezone.utc)
-    try:
+    with session(conn) as conn:
         with conn.cursor() as cur:
             checks = {
                 "freshness": _check_freshness(cur, now, freshness_max_days),
@@ -111,6 +109,3 @@ def run_data_quality_checks(
             "metrics": metrics,
             "all_passed": all(c["passed"] for c in checks.values()),
         }
-    finally:
-        if owns_conn:
-            conn.close()

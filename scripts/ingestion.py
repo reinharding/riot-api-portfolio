@@ -6,7 +6,7 @@ zero rows committed and the watermark untouched.
 """
 from datetime import datetime, timezone
 
-from db import get_connection
+from db import session
 from riot_client import get_json
 
 REGION = "americas"
@@ -116,9 +116,7 @@ def run_ingestion(
     fetch_match_ids_page=fetch_match_ids_page,
     fetch_match_detail=fetch_match_detail,
 ) -> dict:
-    owns_conn = conn is None
-    conn = conn or get_connection()
-    try:
+    with session(conn) as conn:
         with conn.transaction():
             with conn.cursor() as cur:
                 cur.execute(
@@ -167,6 +165,3 @@ def run_ingestion(
                 )
 
             return {"status": "success", "new_matches": len(processed_matches)}
-    finally:
-        if owns_conn:
-            conn.close()

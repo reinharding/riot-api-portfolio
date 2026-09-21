@@ -2,7 +2,7 @@
 import os
 from datetime import datetime, timezone
 
-from db import get_connection
+from db import session
 from ingestion import run_ingestion
 
 STATUS_RUNNING = "running"
@@ -16,38 +16,35 @@ def load_tracked_puuids() -> list[str]:
 
 
 def run_pipeline(trigger_type: str, puuids: list[str] | None = None, conn=None) -> dict:
-    owns_conn = conn is None
-    conn = conn or get_connection()
     puuids = puuids if puuids is not None else load_tracked_puuids()
 
-    started_at = datetime.now(timezone.utc)
-    with conn.cursor() as cur:
-        cur.execute(
-            "INSERT INTO pipeline_runs (trigger_type, started_at, status) VALUES (%s, %s, %s) RETURNING run_id",
-            (trigger_type, started_at, STATUS_RUNNING),
-        )
-        run_id = cur.fetchone()[0]
-    conn.commit()
-
-    try:
-        for puuid in puuids:
-            run_ingestion(puuid, conn=conn)
-        status = STATUS_SUCCESS
-        error_message = None
-    except Exception as exc:
-        status = STATUS_FAILED
-        error_message = str(exc)
-        raise
-    finally:
-        ended_at = datetime.now(timezone.utc)
+    with session(conn) as conn:
+        started_at = datetime.now(timezone.utc)
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE pipeline_runs SET ended_at = %s, status = %s, error_message = %s WHERE run_id = %s",
-                (ended_at, status, error_message, run_id),
+                "INSERT INTO pipeline_runs (trigger_type, started_at, status) VALUES (%s, %s, %s) RETURNING run_id",
+                (trigger_type, started_at, STATUS_RUNNING),
             )
+            run_id = cur.fetchone()[0]
         conn.commit()
-        if owns_conn:
-            conn.close()
+
+        try:
+            for puuid in puuids:
+                run_ingestion(puuid, conn=conn)
+            status = STATUS_SUCCESS
+            error_message = None
+        except Exception as exc:
+            status = STATUS_FAILED
+            error_message = str(exc)
+            raise
+        finally:
+            ended_at = datetime.now(timezone.utc)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pipeline_runs SET ended_at = %s, status = %s, error_message = %s WHERE run_id = %s",
+                    (ended_at, status, error_message, run_id),
+                )
+            conn.commit()
 
     return {"run_id": run_id, "status": status}
 
