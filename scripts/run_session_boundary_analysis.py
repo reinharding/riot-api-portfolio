@@ -1,11 +1,10 @@
 """Print the session gap-threshold sensitivity table for Player A (ticket 06)."""
-import os
-
+from pipeline import load_tracked_puuids
 from session_boundary_analysis import compute_gaps_minutes, fetch_game_windows, sensitivity_table
 
 
 def main():
-    puuid = os.environ["TRACKED_PUUIDS"].split(",")[0].strip()
+    puuid = load_tracked_puuids()[0]
     windows = fetch_game_windows(puuid)
     gaps = compute_gaps_minutes(windows)
     print(f"{len(windows)} non-remake ranked games, {len(gaps)} inter-game gaps")

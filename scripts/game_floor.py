@@ -6,8 +6,10 @@ from db import session
 # must not count toward the floor or feed the composite metric's baselines.
 REMAKE_THRESHOLD_SECONDS = 300
 
+DEFAULT_FLOOR = 30
 
-def check_game_floor(puuid: str, conn=None, floor: int = 30) -> dict:
+
+def check_game_floor(puuid: str, conn=None, floor: int = DEFAULT_FLOOR) -> dict:
     """Count puuid's non-remake ranked games and report whether the floor is met."""
     with session(conn) as conn:
         with conn.cursor() as cur:

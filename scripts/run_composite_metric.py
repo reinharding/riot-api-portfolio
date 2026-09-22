@@ -1,13 +1,12 @@
 """Report Player A's composite performance score per game, gated on the 30-game floor (ticket 05)."""
-import os
-
 from composite_metric import compute_composite_scores, fetch_participant_rows
 from db import session
 from game_floor import check_game_floor
+from pipeline import load_tracked_puuids
 
 
 def main():
-    puuid = os.environ["TRACKED_PUUIDS"].split(",")[0].strip()
+    puuid = load_tracked_puuids()[0]
     with session() as conn:
         gate = check_game_floor(puuid, conn=conn)
         print(f"Game floor: {gate['status']} ({gate['game_count']} ranked games)")

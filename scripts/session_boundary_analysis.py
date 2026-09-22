@@ -13,12 +13,13 @@ CANDIDATE_THRESHOLDS_MIN = (10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90, 120,
 
 
 def fetch_game_windows(puuid: str, conn=None) -> list[dict]:
-    """game_start/game_end for puuid's non-remake ranked games, oldest first."""
+    """match_id/game_start/game_end for puuid's non-remake ranked games, oldest first."""
     with session(conn) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
                 SELECT
+                    m.match_id,
                     m.game_creation AS game_start,
                     m.game_creation + (m.game_duration_seconds * interval '1 second') AS game_end
                 FROM matches m
