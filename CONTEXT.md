@@ -15,5 +15,5 @@ _Avoid_: Checkpoint, cursor (as far as this project's code/docs go, use "waterma
 **Trigger Type**:
 The `pipeline_runs.trigger_type` column recording whether a given ingestion run was started manually (daily key refresh) or on a schedule. Exists so the manual-refresh design is a documented, visible tradeoff rather than an invisible limitation.
 
-**Session** *(under active definition — gap threshold not yet locked)*:
-A run of games by one player treated as temporally contiguous, bounded by a maximum gap between consecutive game-end and next game-start. The exact gap threshold is being decided via sensitivity testing (Phase 4), not assumed.
+**Session**:
+A run of games by one player treated as temporally contiguous, bounded by a maximum gap of **45 minutes** between consecutive game-end and next game-start. Locked via sensitivity testing on raw play-timestamps alone (never the composite metric) — see [ADR 0005](adr/0005-session-gap-threshold-45-minutes.md).
